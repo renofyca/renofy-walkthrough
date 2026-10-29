@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Renofy — The Walkthrough · Crystallo &amp; Taj Mahal</title>
+<meta name="description" content="The single-floor Renofy walkthrough in stone: a Crystallo quartzite kitchen and a Taj Mahal quartzite ensuite. Scroll to walk through it.">
+<link rel="icon" href="assets/stills/exterior.webp">
+<link rel="preload" href="assets/fonts/AGOptimaCyr_Roman.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body>
+
+<!-- Loader -->
+<div id="loader" aria-hidden="true">
+  <div class="loader-inner">
+    <div class="loader-mark">RENOFY</div>
+    <div class="loader-sub">Loading the walkthrough</div>
+    <div class="loader-track"><div class="loader-fill" id="loaderFill"></div></div>
+    <div class="loader-pct" id="loaderPct">0%</div>
+  </div>
+</div>
+
+<!-- Header -->
+<header class="site-head">
+  <a class="brand" href="#top">RENOFY</a>
+  <div class="head-mid">One floor · Seven spaces</div>
+  <a class="head-cta" href="https://renofy.ca/contact.html">Start your project <span aria-hidden="true">→</span></a>
+</header>
+
+<main id="top">
+
+  <!-- Intro -->
+  <section class="intro">
+    <img class="intro-bg" src="assets/stills/exterior.webp" alt="Front of a single-storey modern home in travertine and timber at golden hour">
+    <div class="intro-shade"></div>
+    <div class="intro-copy">
+      <div class="kicker">Renofy · Concept home</div>
+      <h1>One floor.<br>Every room.</h1>
+      <p>A detached modern home you don’t just look at — you walk through it. Keep scrolling to step inside; scroll back to step out.</p>
+      <div class="scroll-hint">Scroll to enter <span aria-hidden="true">↓</span></div>
+    </div>
+  </section>
+
+  <!-- Walkthrough -->
+  <section id="walk" aria-label="Scroll-driven walkthrough of the home">
+    <div class="walk-stage">
+      <canvas id="walkCanvas"></canvas>
+      <video id="walkVideo" preload="auto" muted playsinline></video>
+      <div class="walk-vignette"></div>
+
+      <div class="walk-ui">
+        <div class="walk-kicker">Renofy · The walkthrough</div>
+
+        <div class="steps">
+          <div class="step" data-step="0">
+            <div class="step-room">01 — Exterior</div>
+            <h2>Arrive</h2>
+            <p>Golden hour, every hour. Stone, timber and glass, all on one level.</p>
+          </div>
+          <div class="step" data-step="1">
+            <div class="step-room">02 — Living</div>
+            <h2>Gather</h2>
+            <p>A travertine hearth, boucle and soft light, open to the water.</p>
+          </div>
+          <div class="step" data-step="2">
+            <div class="step-room">03 — Dining</div>
+            <h2>Dine</h2>
+            <p>Solid timber beneath sculptural brass, the terrace beyond the glass.</p>
+          </div>
+          <div class="step" data-step="3">
+            <div class="step-room">04 — Kitchen</div>
+            <h2>Cook</h2>
+            <p>A waterfall of Crystallo quartzite, warm wood and brass pendants.</p>
+          </div>
+          <div class="step" data-step="4">
+            <div class="step-room">05 — Bedroom</div>
+            <h2>Rest</h2>
+            <p>Linen and limestone, waking to the pool through black-framed glass.</p>
+          </div>
+          <div class="step" data-step="5">
+            <div class="step-room">06 — Ensuite</div>
+            <h2>Soak</h2>
+            <p>Taj Mahal quartzite at the vanity, a marble bath, a window to the garden.</p>
+          </div>
+          <div class="step" data-step="6">
+            <div class="step-room">07 — Pool terrace</div>
+            <h2>Breathe</h2>
+            <p>The last room has no ceiling. End the day by the water.</p>
+          </div>
+        </div>
+
+        <a class="walk-cta" href="https://renofy.ca/contact.html">Start your project <span aria-hidden="true">→</span></a>
+
+        <div class="walk-meta">
+          <span class="walk-hint">Scroll to walk through</span>
+          <div class="walk-progress"><div class="walk-progress-fill" id="progressFill"></div></div>
+          <span class="walk-counter" id="walkCounter">01 / 07</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Split feature -->
+  <section class="split">
+    <div class="split-media">
+      <img src="assets/stills/living.webp" alt="Living room with travertine fireplace and glass wall to the pool">
+    </div>
+    <div class="split-panel">
+      <div class="kicker dark">The idea</div>
+      <h3>Composed,<br>not decorated.</h3>
+      <p>One material language from the front path to the pool: travertine underfoot, walnut overhead, brass where your hand lands. Nothing shouts; everything belongs.</p>
+      <ul class="specs">
+        <li>Single storey</li>
+        <li>Open plan</li>
+        <li>Indoor–outdoor living</li>
+        <li>Golden-hour glass</li>
+      </ul>
+      <a class="btn" href="https://renofy.ca/contact.html">Start your project <span aria-hidden="true">→</span></a>
+    </div>
+  </section>
+
+  <!-- Gallery -->
+  <section class="gallery">
+    <div class="gallery-head">
+      <div class="kicker dark">The seven spaces</div>
+      <h3>Walk it again, in stills.</h3>
+    </div>
+    <div class="gallery-grid">
+      <figure><img src="assets/stills/exterior.webp" alt="Exterior"><figcaption>Exterior</figcaption></figure>
+      <figure><img src="assets/stills/living.webp" alt="Living room"><figcaption>Living</figcaption></figure>
+      <figure><img src="assets/stills/dining.webp" alt="Dining room"><figcaption>Dining</figcaption></figure>
+      <figure><img src="assets/stills/kitchen.webp" alt="Kitchen"><figcaption>Kitchen</figcaption></figure>
+      <figure><img src="assets/stills/bedroom.webp" alt="Bedroom"><figcaption>Bedroom</figcaption></figure>
+      <figure><img src="assets/stills/ensuite.webp" alt="Ensuite bathroom"><figcaption>Ensuite</figcaption></figure>
+      <figure><img src="assets/stills/terrace.webp" alt="Pool terrace"><figcaption>Pool terrace</figcaption></figure>
+    </div>
+  </section>
+
+  <footer class="site-foot">
+    <div class="foot-brand">RENOFY</div>
+    <div class="foot-line">Luxury home renovations · Toronto &amp; the GTA</div>
+    <div class="foot-links">
+      <a href="tel:+16476733696">+1 (647) 673-3696</a>
+      <a href="mailto:info@renofy.ca">info@renofy.ca</a>
+      <a href="https://renofy.ca/contact.html">Start your project →</a>
+    </div>
+    <div class="foot-note">Concept preview — imagery is illustrative, generated for design exploration.</div>
+  </footer>
+
+</main>
+
+<script src="main.js?v=1"></script>
+<script>
+  // Last-resort loader release if the main script ever fails to boot.
+  setTimeout(function () {
+    if (!window.__walkBooted) {
+      var l = document.getElementById("loader");
+      if (l) { l.classList.add("done"); setTimeout(function () { l.remove(); }, 800); }
+    }
+  }, 10000);
+</script>
+</body>
+</html>
