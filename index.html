@@ -46,7 +46,7 @@
   <section id="walk" aria-label="Scroll-driven walkthrough of the home">
     <div class="walk-stage">
       <canvas id="walkCanvas"></canvas>
-      <video id="walkVideo" src="assets/walkthrough.mp4?v=1" preload="auto" muted playsinline loop="false"></video>
+      <video id="walkVideo" preload="auto" muted playsinline></video>
       <div class="walk-vignette"></div>
 
       <div class="walk-ui">
@@ -150,6 +150,15 @@
 
 </main>
 
-<script src="main.js?v=1"></script>
+<script src="main.js?v=2"></script>
+<script>
+  // Last-resort loader release if the main script ever fails to boot.
+  setTimeout(function () {
+    if (!window.__walkBooted) {
+      var l = document.getElementById("loader");
+      if (l) { l.classList.add("done"); setTimeout(function () { l.remove(); }, 800); }
+    }
+  }, 10000);
+</script>
 </body>
 </html>
