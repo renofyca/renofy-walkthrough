@@ -2,7 +2,7 @@
   "use strict";
   window.__walkBooted = true;
 
-  var VIDEO_URL = "assets/walkthrough.mp4?v=2";
+  var VIDEO_URL = "assets/walkthrough.mp4?v=3";
   var video = document.getElementById("walkVideo");
   var canvas = document.getElementById("walkCanvas");
   var ctx = canvas.getContext("2d");
@@ -83,13 +83,20 @@
      byte-level progress on every browser (iOS webviews don't report
      <video> buffered progress reliably). Then hand the completed blob
      to the video element: full-range scrubbing with zero network lag. */
-  function attachVideo(src) {
+  function attachVideo(src, isBlob) {
     video.src = src;
     video.load();
+    if (isBlob) {
+      // Watchdog: if the blob source never becomes playable (some
+      // webviews are picky), fall back to streaming the file directly.
+      setTimeout(function () {
+        if (!videoReady) attachVideo(VIDEO_URL, false);
+      }, 6000);
+    }
   }
   function fallbackDirect() {
     if (loaderSub) loaderSub.textContent = "Loading the walkthrough";
-    attachVideo(VIDEO_URL);
+    attachVideo(VIDEO_URL, false);
     video.addEventListener("canplay", hideLoader);
     setTimeout(hideLoader, 9000);
   }
@@ -111,7 +118,7 @@
         return reader.read().then(function (r) {
           if (r.done) {
             var blob = new Blob(chunks, { type: "video/mp4" });
-            attachVideo(URL.createObjectURL(blob));
+            attachVideo(URL.createObjectURL(blob), true);
             return;
           }
           chunks.push(r.value);
@@ -131,6 +138,10 @@
   }
   if (video.readyState >= 1) onMeta();
   video.addEventListener("loadedmetadata", onMeta);
+  video.addEventListener("loadeddata", function () {
+    videoReady = true;
+    drawCurrent();
+  });
   video.addEventListener("canplay", function () {
     videoReady = true;
     drawCurrent();
