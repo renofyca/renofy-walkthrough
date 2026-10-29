@@ -2,7 +2,7 @@
   "use strict";
   window.__walkBooted = true;
 
-  var VIDEO_URL = "assets/walkthrough.mp4?v=3";
+  var VIDEO_URL = "assets/walkthrough.mp4?v=4";
   var video = document.getElementById("walkVideo");
   var canvas = document.getElementById("walkCanvas");
   var ctx = canvas.getContext("2d");
