@@ -132,11 +132,12 @@ a { color: inherit; }
 .step {
   position: absolute; left: 0; bottom: 0; width: max-content; max-width: 86vw;
   opacity: 0; transform: translateY(14px);
-  transition: opacity 0.45s ease, transform 0.45s ease;
+  /* No CSS transition: main.js sets opacity/transform every frame from
+     the eased scroll position. A transition here would lag the JS
+     values and let an outgoing step linger as a ghost. */
   pointer-events: none;
 }
 .step:first-child { position: relative; }
-.step.active { opacity: 1; transform: translateY(0); }
 .step-room {
   font-size: 0.7rem; letter-spacing: 0.32em; text-transform: uppercase; color: var(--brass);
 }
