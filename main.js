@@ -45,26 +45,37 @@
     }, 150);
   }
 
-  /* ---------------- Canvas ---------------- */
+  /* ---------------- Canvas ----------------
+     The backing store is pinned to the video's native 1280x720. The old
+     code scaled it by devicePixelRatio (up to 5120x2880 on a desktop),
+     so every presented frame cost a ~14.7 MP upscale paint — the paint
+     cost behind the remaining desktop judder. CSS already stretches
+     the canvas to fill the stage; drawCover picks the source region
+     using the STAGE's aspect ratio, so that CSS stretch is uniform
+     (no distortion) and the framing/cropping matches the old
+     full-resolution cover draw exactly. */
+  var VIEW_W = 1280, VIEW_H = 720;
+  var stageAspect = 16 / 9;
   function sizeCanvas() {
     var r = stage.getBoundingClientRect();
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var w = Math.max(2, Math.round(r.width * dpr));
-    var h = Math.max(2, Math.round(r.height * dpr));
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
-      drawCurrent();
+    if (r.width > 0 && r.height > 0) stageAspect = r.width / r.height;
+    if (canvas.width !== VIEW_W || canvas.height !== VIEW_H) {
+      canvas.width = VIEW_W;
+      canvas.height = VIEW_H;
     }
+    drawCurrent();
   }
   window.addEventListener("resize", sizeCanvas);
 
   function drawCover(img, iw, ih) {
     var cw = canvas.width, ch = canvas.height;
     if (!iw || !ih || !cw || !ch) return;
-    var scale = Math.max(cw / iw, ch / ih);
-    var dw = iw * scale, dh = ih * scale;
-    ctx.drawImage(img, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+    // Cover-fit against a virtual viewport with the stage's aspect
+    // (stageAspect wide, 1 tall): the centred visible source region
+    // fills the whole native-res buffer.
+    var s = Math.max(stageAspect / iw, 1 / ih);
+    var sw = stageAspect / s, sh = 1 / s;
+    ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, cw, ch);
   }
   function drawCurrent() {
     if (videoReady && video.readyState >= 2 && video.videoWidth) {
@@ -172,16 +183,27 @@
     }
     counter.textContent = ("0" + (idx + 1)) + " / 0" + STEP_COUNT;
   }
-  function tick() {
-    if (!inView) { rafId = null; return; }
+  var lastTickMs = 0;
+  function tick(now) {
+    if (!inView) { rafId = null; lastTickMs = 0; return; }
     var p = scrollProgress();
     progressFill.style.width = (p * 100).toFixed(2) + "%";
     setStep(Math.min(STEP_COUNT - 1, Math.floor(p * STEP_COUNT)));
     if (duration > 0 && videoReady) {
+      /* Frame-rate-independent ease. The old code applied 0.16 per rAF
+         tick, so on 120 Hz+ monitors the approach ran ~2x faster than
+         on a 60 Hz screen. Time-based instead: over dt ms the remaining
+         gap scales by (1 - 0.16) ^ (dt / 16.667), which is exactly the
+         old behaviour at 60 Hz at any refresh rate. dt is clamped so a
+         tab-away or hitch can't teleport the playhead. */
+      var dt = lastTickMs && now ? now - lastTickMs : 16.667;
+      lastTickMs = now || 0;
+      dt = Math.min(Math.max(dt, 0), 100);
+      var ease = 1 - Math.pow(1 - 0.16, dt / 16.667);
       var targetTime = p * duration;
       var diff = targetTime - shownTime;
       if (Math.abs(diff) > 0.0005) {
-        shownTime += diff * 0.16; // eased approach = buttery scrub, both directions
+        shownTime += diff * ease; // eased approach = buttery scrub, both directions
         if (Math.abs(targetTime - shownTime) <= 0.0005) shownTime = targetTime;
       }
       /* Pace the seeks. The encode is 24 fps (one frame = ~41.7 ms), so
