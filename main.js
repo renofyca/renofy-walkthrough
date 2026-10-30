@@ -2,7 +2,7 @@
   "use strict";
   window.__walkBooted = true;
 
-  var VIDEO_URL = "assets/walkthrough.mp4?v=6";
+  var VIDEO_URL = "assets/walkthrough.mp4?v=7";
   var video = document.getElementById("walkVideo");
   var canvas = document.getElementById("walkCanvas");
   var ctx = canvas.getContext("2d");
@@ -19,16 +19,27 @@
   var STEP_COUNT = steps.length;
 
   /* Frame-scrub path (primary): the walkthrough video pre-extracted to
-     WebP frames (12 fps, 854x480, same footage — the mp4 itself stays
+     WebP frames (12 fps, 1920x1080, same footage — the mp4 itself stays
      on the page as the fallback). Scrubbing then costs one drawImage of
      a decoded image per position: no decoder seeks at all. */
-  var FRAME_FPS = 12, FRAME_COUNT = 840, FRAME_W = 854, FRAME_H = 480;
-  var EARLY_FRAMES = 36;   // ~3 s of runway before the frame path goes live
+  var FRAME_FPS = 12, FRAME_COUNT = 840, FRAME_W = 1920, FRAME_H = 1080;
+  var FRAME_VER = "2";     // bump when the frame files are re-extracted
+  var EARLY_FRAMES = 36;   // give-up threshold if frames cannot load
+  /* Anchor-first loading: one anchor frame per second of tour (every
+     ANCHOR_STEP-th frame) is fetched before everything else, so the
+     WHOLE tour becomes scrubbable almost immediately; the remaining
+     frames then fill in around the viewer's position. */
+  var ANCHOR_STEP = 12;
+  var ANCHORS = [];
+  for (var ai = 0; ai < FRAME_COUNT; ai += ANCHOR_STEP) ANCHORS.push(ai);
   var frames = new Array(FRAME_COUNT);
   var frameState = new Uint8Array(FRAME_COUNT); // 0 pending, 1 ok, 2 failed
-  var framePrefix = 0;     // frames[0 .. framePrefix-1] all attempted
+  var frameRequested = new Uint8Array(FRAME_COUNT);
+  var anchorsAttempted = 0, anchorsOK = 0;
   var framesAttempted = 0, framesOK = 0;
   var framesActive = false, framesGaveUp = false, drawnFrame = -1;
+  var scrollDir = 1;        // last observed scrub direction (+1 forward)
+  var currentFrameIdx = 0;  // lookahead origin for the fill-in order
 
   var duration = FRAME_COUNT / FRAME_FPS; // 70 s; video metadata agrees
   var shownTime = 0;
@@ -59,15 +70,15 @@
   }
 
   /* ---------------- Canvas ----------------
-     The backing store is pinned to the video's native 1280x720. The old
-     code scaled it by devicePixelRatio (up to 5120x2880 on a desktop),
-     so every presented frame cost a ~14.7 MP upscale paint — the paint
-     cost behind the remaining desktop judder. CSS already stretches
-     the canvas to fill the stage; drawCover picks the source region
-     using the STAGE's aspect ratio, so that CSS stretch is uniform
-     (no distortion) and the framing/cropping matches the old
-     full-resolution cover draw exactly. */
-  var VIEW_W = 1280, VIEW_H = 720;
+     The backing store is pinned to the frames' native 1920x1080 (1:1
+     with the source frames). Scaling it by devicePixelRatio instead
+     (up to 5120x2880 on a desktop) made every presented frame cost a
+     ~14.7 MP paint — the paint cost behind the old desktop judder.
+     CSS already stretches the canvas to fill the stage; drawCover
+     picks the source region using the STAGE's aspect ratio, so that
+     CSS stretch is uniform (no distortion) and the framing/cropping
+     matches a full-resolution cover draw exactly. */
+  var VIEW_W = 1920, VIEW_H = 1080;
   var stageAspect = 16 / 9;
   function sizeCanvas() {
     var r = stage.getBoundingClientRect();
@@ -96,12 +107,21 @@
     return Math.max(0, Math.min(FRAME_COUNT - 1, fi));
   }
   function drawFrame(fi) {
-    // Frames load in scroll order, so everything below framePrefix has
-    // been attempted; clamp to it and walk down past any individual
-    // failure to the nearest decoded frame.
-    var idx = Math.min(fi, framePrefix - 1);
-    while (idx > 0 && frameState[idx] !== 1) idx--;
-    if (idx < 0 || frameState[idx] !== 1 || idx === drawnFrame) return;
+    // Paint the loaded frame nearest the eased position, preferring
+    // the side the viewer is moving toward. Anchors span the whole
+    // tour from the start, so a near frame exists at any position
+    // long before the fill-in completes.
+    var idx = -1;
+    if (frameState[fi] === 1) idx = fi;
+    else {
+      for (var d = 1; d < FRAME_COUNT; d++) {
+        var fwd = fi + d * scrollDir, back = fi - d * scrollDir;
+        if (fwd >= 0 && fwd < FRAME_COUNT && frameState[fwd] === 1) { idx = fwd; break; }
+        if (back >= 0 && back < FRAME_COUNT && frameState[back] === 1) { idx = back; break; }
+        if (fi + d >= FRAME_COUNT && fi - d < 0) break;
+      }
+    }
+    if (idx < 0 || idx === drawnFrame) return;
     drawnFrame = idx;
     drawCover(frames[idx], FRAME_W, FRAME_H);
   }
@@ -194,13 +214,16 @@
   });
 
   /* ---------------- Frame loading ----------------
-     Load in scroll order (small worker pool, indices handed out in
-     order) and count every settled frame toward the loader, so the
-     percentage stays honest. The frame path goes live once the first
-     EARLY_FRAMES are in; positions past the loaded prefix clamp to its
-     last frame until the rest arrive. If frames essentially cannot
-     load at all, fall back to the original video path wholesale. */
-  function frameURL(i) { return "assets/frames/f" + ("0000" + i).slice(-4) + ".webp"; }
+     Anchor-first: the pool first fetches the anchor frames (one per
+     second, spanning the whole tour), and the frame path goes live as
+     soon as the anchors are essentially in. Fill-in then proceeds
+     relative to the viewer: frames ahead of the current position in
+     the current scroll direction are fetched first, so the loader
+     races ahead of the scrub instead of trailing it. Every settled
+     frame counts toward the loader, so the percentage stays honest.
+     If frames essentially cannot load at all, fall back to the
+     original video path wholesale. */
+  function frameURL(i) { return "assets/frames/f" + ("0000" + i).slice(-4) + ".webp?v=" + FRAME_VER; }
   function startVideoFallback() {
     if (framesGaveUp) return;
     framesGaveUp = true;
@@ -212,10 +235,11 @@
     frameState[i] = ok ? 1 : 2;
     framesAttempted++;
     if (ok) framesOK++;
-    while (framePrefix < FRAME_COUNT && frameState[framePrefix] !== 0) framePrefix++;
+    if (i % ANCHOR_STEP === 0) { anchorsAttempted++; if (ok) anchorsOK++; }
     if (!framesGaveUp) {
       setLoader(framesAttempted / FRAME_COUNT);
-      if (framePrefix >= EARLY_FRAMES) framesActive = true;
+      if (!framesActive && anchorsAttempted >= ANCHORS.length && anchorsOK >= ANCHORS.length * 0.8) framesActive = true;
+      if (!framesActive && framesOK >= EARLY_FRAMES) framesActive = true;
       if (framesAttempted >= 60 && framesOK === 0) { startVideoFallback(); return; }
       if (framesAttempted >= FRAME_COUNT) {
         if (framesOK >= EARLY_FRAMES) { framesActive = true; hideLoader(); }
@@ -225,10 +249,28 @@
     if (framesActive) drawCurrent();
   }
   function loadFrames() {
-    var next = 0, POOL = 6;
+    var anchorPtr = 0, POOL = 6;
+    function nextIndex() {
+      while (anchorPtr < ANCHORS.length) {
+        var a = ANCHORS[anchorPtr++];
+        if (!frameRequested[a]) { frameRequested[a] = 1; return a; }
+      }
+      // Fill-in: the pending frame nearest ahead of the viewer in the
+      // current scroll direction wins; frames behind the viewer are
+      // taken nearest-first only once nothing is ahead.
+      var best = -1, bestScore = Infinity;
+      for (var i = 0; i < FRAME_COUNT; i++) {
+        if (frameRequested[i]) continue;
+        var ahead = (i - currentFrameIdx) * scrollDir;
+        var score = ahead >= 0 ? ahead : 100000 - ahead;
+        if (score < bestScore) { bestScore = score; best = i; }
+      }
+      if (best >= 0) frameRequested[best] = 1;
+      return best;
+    }
     function worker() {
-      if (next >= FRAME_COUNT) return;
-      var i = next++;
+      var i = nextIndex();
+      if (i < 0) return;
       var img = new Image();
       img.onload = function () { frames[i] = img; frameSettled(i, true); worker(); };
       img.onerror = function () { frameSettled(i, false); worker(); };
@@ -305,10 +347,15 @@
         if (Math.abs(targetTime - shownTime) <= 0.0005) shownTime = targetTime;
       }
       updateSteps();
+      var fiNow = frameIndexFor(shownTime);
+      if (fiNow !== currentFrameIdx) {
+        scrollDir = fiNow > currentFrameIdx ? 1 : -1;
+        currentFrameIdx = fiNow;
+      }
       if (framesActive) {
-        // Frame path: paint the preloaded frame nearest the eased
+        // Frame path: paint the loaded frame nearest the eased
         // position. No seeking, no decoder — drawImage only.
-        drawFrame(frameIndexFor(shownTime));
+        drawFrame(fiNow);
       } else if (videoReady) {
       /* Fallback-only seek pacing. The encode is 24 fps (one frame =
          ~41.7 ms), so seeking in steps finer than a frame is wasted
