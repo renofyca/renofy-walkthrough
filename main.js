@@ -19,6 +19,8 @@
   var STEP_COUNT = steps.length;
   var duration = 0;
   var shownTime = 0;
+  var lastSeek = -1;   // last time value handed to the decoder
+  var needsDraw = true; // canvas only needs repainting when the frame changes
   var rafId = null;
   var inView = false;
   var activeStep = -1;
@@ -147,7 +149,9 @@
     drawCurrent();
     hideLoader();
   });
-  video.addEventListener("seeked", function () { if (videoReady) drawCurrent(); });
+  video.addEventListener("seeked", function () {
+    if (videoReady) { needsDraw = true; drawCurrent(); }
+  });
 
   fetchWithProgress();
   setTimeout(hideLoader, 20000); // absolute failsafe: never trap the visitor
@@ -179,12 +183,31 @@
       if (Math.abs(diff) > 0.0005) {
         shownTime += diff * 0.16; // eased approach = buttery scrub, both directions
         if (Math.abs(targetTime - shownTime) <= 0.0005) shownTime = targetTime;
-        if (Math.abs(video.currentTime - shownTime) > 0.01) {
-          try { video.currentTime = shownTime; } catch (e) { /* seek mid-flight */ }
+      }
+      /* Pace the seeks. The encode is 24 fps (one frame = ~41.7 ms), so
+         seeking in steps finer than a frame is wasted decoder work; and a
+         seek issued while another is still in flight just stacks up —
+         video.currentTime lags behind until the seek lands, so an
+         unguarded loop seeks again and again, the browser coalesces the
+         pile, and frames arrive in bursts (the desktop scroll glitch).
+         Rule: one seek at a time, and only once the eased position has
+         moved at least one frame from the last seek — plus one final
+         exact seek when the ease settles. */
+      if (!video.seeking) {
+        var FRAME = 1 / 24;
+        var from = lastSeek >= 0 ? lastSeek : video.currentTime;
+        var delta = shownTime - from;
+        var settled = Math.abs(targetTime - shownTime) <= 0.0005;
+        if (Math.abs(delta) >= FRAME || (settled && Math.abs(delta) > 0.002)) {
+          try {
+            video.currentTime = shownTime;
+            lastSeek = shownTime;
+            needsDraw = true;
+          } catch (e) { /* seek mid-flight */ }
         }
       }
     }
-    drawCurrent();
+    if (needsDraw) { drawCurrent(); needsDraw = false; }
     rafId = requestAnimationFrame(tick);
   }
   var io = new IntersectionObserver(function (entries) {
