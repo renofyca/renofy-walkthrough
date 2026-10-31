@@ -10,9 +10,9 @@
      3840 encode also exists, but at ~120 MB it exceeds the 100 MB
      per-file limit of the Pages host, so the ladder goes straight
      from HEVC to the 1080 floor.) */
-  var VIDEO_AV1 = "assets/walkthrough-av1-3840.mp4?v=1";
-  var VIDEO_HEVC = "assets/walkthrough-hevc-3840.mp4?v=1";
-  var VIDEO_H264_1080 = "assets/walkthrough-h264-1080.mp4?v=1";
+  var VIDEO_AV1 = "assets/walkthrough-av1-3840.mp4?v=2";
+  var VIDEO_HEVC = "assets/walkthrough-hevc-3840.mp4?v=2";
+  var VIDEO_H264_1080 = "assets/walkthrough-h264-1080.mp4?v=2";
   function pickVideoURL() {
     var probe = document.createElement("video");
     if (!probe.canPlayType) return VIDEO_H264_1080;
