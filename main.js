@@ -44,7 +44,7 @@
      costs one drawImage of a decoded image per position: no decoder
      seeks at all. */
   var FRAME_FPS = 12, FRAME_COUNT = 840, FRAME_W = 1920, FRAME_H = 1080;
-  var FRAME_VER = "3";     // bump when the frame files are re-extracted
+  var FRAME_VER = "4";     // bump when the frame files are re-extracted
   /* Frame format: the set now exists as AVIF (about half the bytes of
      the WebP set at the same quality). A one-pixel AVIF probe image
      decides at runtime; browsers without AVIF (Safari < 16.4 etc.)
@@ -67,6 +67,18 @@
   var framesActive = false, framesGaveUp = false, drawnFrame = -1;
   var scrollDir = 1;        // last observed scrub direction (+1 forward)
   var currentFrameIdx = 0;  // lookahead origin for the fill-in order
+  /* Tier 2 (quality): a second frame set at 3840x2160 (AVIF only),
+     loaded anchor-first alongside tier 1 when the display can
+     actually show the extra detail and the connection is not
+     save-data / slow. While a tier-2 frame is in flight its tier-1
+     twin is what paints, so the tour is never blank — the frame
+     sharpens in place when the 3840 version lands. The canvas
+     backing rises to 3840x2160 in this mode; phones and smaller
+     screens keep exactly the tier-1 behaviour. */
+  var hiMode = false;
+  var hiFrames = new Array(FRAME_COUNT);
+  var hiState = new Uint8Array(FRAME_COUNT); // 0 pending, 1 ok, 2 failed
+  var hiRequested = new Uint8Array(FRAME_COUNT);
 
   var duration = FRAME_COUNT / FRAME_FPS; // 70 s; video metadata agrees
   var shownTime = 0;
@@ -137,20 +149,45 @@
     // Paint the loaded frame nearest the eased position, preferring
     // the side the viewer is moving toward. Anchors span the whole
     // tour from the start, so a near frame exists at any position
-    // long before the fill-in completes.
-    var idx = -1;
-    if (frameState[fi] === 1) idx = fi;
+    // long before the fill-in completes. In tier-2 mode the exact
+    // 3840 frame wins when present, its 1080 twin otherwise; the
+    // widening search checks position first (nearest wins), and at
+    // each candidate prefers the 3840 version. drawnFrame stores a
+    // composite key (index * 2 + tier) so a frame repaints when its
+    // sharper twin replaces it at the same index.
+    var idx = -1, hi = false;
+    if (!hiMode) {
+      if (frameState[fi] === 1) idx = fi;
+      else {
+        for (var d0 = 1; d0 < FRAME_COUNT; d0++) {
+          var fwd0 = fi + d0 * scrollDir, back0 = fi - d0 * scrollDir;
+          if (fwd0 >= 0 && fwd0 < FRAME_COUNT && frameState[fwd0] === 1) { idx = fwd0; break; }
+          if (back0 >= 0 && back0 < FRAME_COUNT && frameState[back0] === 1) { idx = back0; break; }
+          if (fi + d0 >= FRAME_COUNT && fi - d0 < 0) break;
+        }
+      }
+    } else if (hiState[fi] === 1) { idx = fi; hi = true; }
+    else if (frameState[fi] === 1) { idx = fi; }
     else {
       for (var d = 1; d < FRAME_COUNT; d++) {
-        var fwd = fi + d * scrollDir, back = fi - d * scrollDir;
-        if (fwd >= 0 && fwd < FRAME_COUNT && frameState[fwd] === 1) { idx = fwd; break; }
-        if (back >= 0 && back < FRAME_COUNT && frameState[back] === 1) { idx = back; break; }
+        var cands = [fi + d * scrollDir, fi - d * scrollDir];
+        var done = false;
+        for (var ci = 0; ci < 2; ci++) {
+          var x = cands[ci];
+          if (x < 0 || x >= FRAME_COUNT) continue;
+          if (hiState[x] === 1) { idx = x; hi = true; done = true; break; }
+          if (frameState[x] === 1) { idx = x; done = true; break; }
+        }
+        if (done) break;
         if (fi + d >= FRAME_COUNT && fi - d < 0) break;
       }
     }
-    if (idx < 0 || idx === drawnFrame) return;
-    drawnFrame = idx;
-    drawCover(frames[idx], FRAME_W, FRAME_H);
+    if (idx < 0) return;
+    var key = idx * 2 + (hi ? 1 : 0);
+    if (key === drawnFrame) return;
+    drawnFrame = key;
+    if (hi) drawCover(hiFrames[idx], hiFrames[idx].naturalWidth || 3840, hiFrames[idx].naturalHeight || 2160);
+    else drawCover(frames[idx], FRAME_W, FRAME_H);
   }
   function drawCurrent() {
     if (framesActive) { drawFrame(frameIndexFor(shownTime)); return; }
@@ -306,6 +343,59 @@
     for (var k = 0; k < POOL; k++) worker();
   }
 
+  /* Tier-2 loader: same anchor-first, viewer-relative fill-in as
+     tier 1, smaller pool (the files are ~3x larger). It never drives
+     the loader percentage and never blocks the tour — tier 1 alone
+     decides when the walk goes live; tier 2 only sharpens. */
+  function hiFrameURL(i) { return "assets/frames-3840/f" + ("0000" + i).slice(-4) + ".avif?v=" + FRAME_VER; }
+  function loadHiFrames() {
+    var anchorPtr = 0, POOL = 4;
+    function nextIndex() {
+      while (anchorPtr < ANCHORS.length) {
+        var a = ANCHORS[anchorPtr++];
+        if (!hiRequested[a]) { hiRequested[a] = 1; return a; }
+      }
+      var best = -1, bestScore = Infinity;
+      for (var i = 0; i < FRAME_COUNT; i++) {
+        if (hiRequested[i]) continue;
+        var ahead = (i - currentFrameIdx) * scrollDir;
+        var score = ahead >= 0 ? ahead : 100000 - ahead;
+        if (score < bestScore) { bestScore = score; best = i; }
+      }
+      if (best >= 0) hiRequested[best] = 1;
+      return best;
+    }
+    function worker() {
+      var i = nextIndex();
+      if (i < 0) return;
+      var img = new Image();
+      img.onload = function () {
+        hiFrames[i] = img; hiState[i] = 1;
+        if (framesActive) drawCurrent(); // sharpen in place
+        worker();
+      };
+      img.onerror = function () { hiState[i] = 2; worker(); };
+      img.src = hiFrameURL(i);
+    }
+    for (var k = 0; k < POOL; k++) worker();
+  }
+  /* Tier-2 gate: AVIF frames only, and only where the extra pixels
+     are visible — the stage's device-pixel width (CSS width x
+     devicePixelRatio) must reach 2000 — and the connection is not
+     save-data or 2G-class. (A retina phone's stage is ~1200 device
+     px wide, so phones stay on the fast tier where 3840 frames
+     would buy nothing.) */
+  function computeHiMode() {
+    if (FRAME_EXT !== "avif") return false;
+    try {
+      var conn = navigator.connection;
+      if (conn && (conn.saveData || conn.effectiveType === "slow-2g" || conn.effectiveType === "2g")) return false;
+      var r = stage.getBoundingClientRect();
+      var w = (r.width > 0 ? r.width : window.innerWidth) * (window.devicePixelRatio || 1);
+      return w >= 2000;
+    } catch (e) { return false; }
+  }
+
   /* Probe AVIF support (async, short timeout), then start the exact
      same anchor-first loader as before — WebP visitors see no change
      in behaviour, AVIF visitors just download ~half the bytes. */
@@ -314,7 +404,10 @@
     function begin() {
       if (finished) return;
       finished = true;
+      hiMode = computeHiMode();
+      if (hiMode) { VIEW_W = 3840; VIEW_H = 2160; sizeCanvas(); }
       loadFrames();
+      if (hiMode) loadHiFrames();
       setTimeout(hideLoader, 20000); // absolute failsafe: never trap the visitor
     }
     try {
