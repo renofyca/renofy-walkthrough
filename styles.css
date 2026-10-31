@@ -114,6 +114,14 @@ a { color: inherit; }
   position: sticky; top: 0; height: 100svh; overflow: hidden; background: #000;
 }
 #walkCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+@media (orientation: portrait) {
+  /* Phones: show the WHOLE 16:9 frame (fit width, centred on the dark
+     stage) instead of cover-cropping it into the portrait box. The crop
+     discarded ~74% of the frame's width and then upscaled the remaining
+     ~500 px centre slice to full screen — that upscale is the blur the
+     owner reported on phones. Full frame = ~4x the source width. */
+  #walkCanvas { inset: auto; top: 50%; left: 0; width: 100%; height: auto; aspect-ratio: 16 / 9; transform: translateY(-50%); }
+}
 #walkVideo {
   position: absolute; width: 2px; height: 2px; opacity: 0.01; pointer-events: none;
 }

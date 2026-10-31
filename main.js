@@ -76,6 +76,7 @@
      backing rises to 3840x2160 in this mode; phones and smaller
      screens keep exactly the tier-1 behaviour. */
   var hiMode = false;
+  var hiStarted = false;
   var hiFrames = new Array(FRAME_COUNT);
   var hiState = new Uint8Array(FRAME_COUNT); // 0 pending, 1 ok, 2 failed
   var hiRequested = new Uint8Array(FRAME_COUNT);
@@ -120,8 +121,14 @@
   var VIEW_W = 1920, VIEW_H = 1080;
   var stageAspect = 16 / 9;
   function sizeCanvas() {
+    // Aspect comes from the CANVAS element's own box, not the stage:
+    // in portrait the canvas is a centred 16:9 box (see styles.css), so
+    // the cover math draws the full frame; on landscape/desktop the
+    // canvas fills the stage and this is identical to the stage aspect.
+    var cr = canvas.getBoundingClientRect();
     var r = stage.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) stageAspect = r.width / r.height;
+    if (cr.width > 0 && cr.height > 0) stageAspect = cr.width / cr.height;
+    else if (r.width > 0 && r.height > 0) stageAspect = r.width / r.height;
     if (canvas.width !== VIEW_W || canvas.height !== VIEW_H) {
       canvas.width = VIEW_W;
       canvas.height = VIEW_H;
@@ -304,9 +311,20 @@
       setLoader(framesAttempted / FRAME_COUNT);
       if (!framesActive && anchorsAttempted >= ANCHORS.length && anchorsOK >= ANCHORS.length * 0.8) framesActive = true;
       if (!framesActive && framesOK >= EARLY_FRAMES) framesActive = true;
+      // The tour is usable the moment the anchors are in — release the
+      // loader then, NOT when all 840 frames have arrived. (The old
+      // behaviour kept the overlay up for the full ~79 MB download or
+      // the 20 s failsafe, which is what "loading is slow" on a phone
+      // actually was.) Fill-in continues behind the tour.
+      if (framesActive) hideLoader();
       if (framesAttempted >= 60 && framesOK === 0) { startVideoFallback(); return; }
       if (framesAttempted >= FRAME_COUNT) {
-        if (framesOK >= EARLY_FRAMES) { framesActive = true; hideLoader(); }
+        if (framesOK >= EARLY_FRAMES) {
+          framesActive = true; hideLoader();
+          // Tier 2 starts only once tier 1 is fully in, so the two
+          // sets never compete for the same bandwidth.
+          if (hiMode && !hiStarted) { hiStarted = true; loadHiFrames(); }
+        }
         else { startVideoFallback(); return; }
       }
     }
@@ -407,7 +425,8 @@
       hiMode = computeHiMode();
       if (hiMode) { VIEW_W = 3840; VIEW_H = 2160; sizeCanvas(); }
       loadFrames();
-      if (hiMode) loadHiFrames();
+      // Safety net only: if tier 1 somehow stalls, tier 2 still starts.
+      setTimeout(function () { if (hiMode && !hiStarted) { hiStarted = true; loadHiFrames(); } }, 45000);
       setTimeout(hideLoader, 20000); // absolute failsafe: never trap the visitor
     }
     try {
