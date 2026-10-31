@@ -2,7 +2,27 @@
   "use strict";
   window.__walkBooted = true;
 
-  var VIDEO_URL = "assets/walkthrough.mp4?v=7";
+  /* Fallback-video ladder: the first format the browser can actually
+     play wins — AV1 (smallest file) → HEVC (Apple / modern Chrome) →
+     H.264 1080, the universal floor that plays on every device.
+     Probed with canPlayType before anything downloads, so a visitor
+     only ever fetches the one file their browser picked. (An H.264
+     3840 encode also exists, but at ~120 MB it exceeds the 100 MB
+     per-file limit of the Pages host, so the ladder goes straight
+     from HEVC to the 1080 floor.) */
+  var VIDEO_AV1 = "assets/walkthrough-av1-3840.mp4?v=1";
+  var VIDEO_HEVC = "assets/walkthrough-hevc-3840.mp4?v=1";
+  var VIDEO_H264_1080 = "assets/walkthrough-h264-1080.mp4?v=1";
+  function pickVideoURL() {
+    var probe = document.createElement("video");
+    if (!probe.canPlayType) return VIDEO_H264_1080;
+    try {
+      if (probe.canPlayType('video/mp4; codecs="av01.0.08M.08"')) return VIDEO_AV1;
+      if (probe.canPlayType('video/mp4; codecs="hvc1.1.6.L150.B0"')) return VIDEO_HEVC;
+    } catch (e) { /* fall through to the floor */ }
+    return VIDEO_H264_1080;
+  }
+  var VIDEO_URL = pickVideoURL();
   var video = document.getElementById("walkVideo");
   var canvas = document.getElementById("walkCanvas");
   var ctx = canvas.getContext("2d");
@@ -19,11 +39,18 @@
   var STEP_COUNT = steps.length;
 
   /* Frame-scrub path (primary): the walkthrough video pre-extracted to
-     WebP frames (12 fps, 1920x1080, same footage — the mp4 itself stays
-     on the page as the fallback). Scrubbing then costs one drawImage of
-     a decoded image per position: no decoder seeks at all. */
+     image frames (12 fps, 1920x1080, same footage — a video ladder in
+     several codecs stays on the page as the fallback). Scrubbing then
+     costs one drawImage of a decoded image per position: no decoder
+     seeks at all. */
   var FRAME_FPS = 12, FRAME_COUNT = 840, FRAME_W = 1920, FRAME_H = 1080;
-  var FRAME_VER = "2";     // bump when the frame files are re-extracted
+  var FRAME_VER = "3";     // bump when the frame files are re-extracted
+  /* Frame format: the set now exists as AVIF (about half the bytes of
+     the WebP set at the same quality). A one-pixel AVIF probe image
+     decides at runtime; browsers without AVIF (Safari < 16.4 etc.)
+     transparently keep loading the WebP set. */
+  var FRAME_EXT = "webp";
+  var AVIF_PROBE = "data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZk1BMUIAAAD5bWV0YQAAAAAAAAAvaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAFBpY3R1cmVIYW5kbGVyAAAAAA5waXRtAAAAAAABAAAAHmlsb2MAAAAARAAAAQABAAAAAQAAASEAAAAbAAAAKGlpbmYAAAAAAAEAAAAaaW5mZQIAAAAAAQAAYXYwMUNvbG9yAAAAAGppcHJwAAAAS2lwY28AAAAUaXNwZQAAAAAAAABAAAAAQAAAABBwaXhpAAAAAAMICAgAAAAMYXYxQ4EADAAAAAATY29scm5jbHgAAgACAAIAAAAAF2lwbWEAAAAAAAAAAQABBAECgwQAAAAjbWRhdAoKAAAAAq//jV8wCDINEADMAhBAggIAAAgBbg==";
   var EARLY_FRAMES = 36;   // give-up threshold if frames cannot load
   /* Anchor-first loading: one anchor frame per second of tour (every
      ANCHOR_STEP-th frame) is fetched before everything else, so the
@@ -223,7 +250,7 @@
      frame counts toward the loader, so the percentage stays honest.
      If frames essentially cannot load at all, fall back to the
      original video path wholesale. */
-  function frameURL(i) { return "assets/frames/f" + ("0000" + i).slice(-4) + ".webp?v=" + FRAME_VER; }
+  function frameURL(i) { return "assets/frames/f" + ("0000" + i).slice(-4) + "." + FRAME_EXT + "?v=" + FRAME_VER; }
   function startVideoFallback() {
     if (framesGaveUp) return;
     framesGaveUp = true;
@@ -279,8 +306,25 @@
     for (var k = 0; k < POOL; k++) worker();
   }
 
-  loadFrames();
-  setTimeout(hideLoader, 20000); // absolute failsafe: never trap the visitor
+  /* Probe AVIF support (async, short timeout), then start the exact
+     same anchor-first loader as before — WebP visitors see no change
+     in behaviour, AVIF visitors just download ~half the bytes. */
+  (function startWhenProbed() {
+    var finished = false;
+    function begin() {
+      if (finished) return;
+      finished = true;
+      loadFrames();
+      setTimeout(hideLoader, 20000); // absolute failsafe: never trap the visitor
+    }
+    try {
+      var probe = new Image();
+      probe.onload = function () { if (probe.naturalWidth > 0) FRAME_EXT = "avif"; begin(); };
+      probe.onerror = function () { begin(); };
+      setTimeout(begin, 1500);
+      probe.src = AVIF_PROBE;
+    } catch (e) { begin(); }
+  })();
 
   /* ---------------- Scroll -> time ---------------- */
   function scrollProgress() {
